@@ -21,6 +21,8 @@ namespace EliteRouteStats
             int jumpCount = 0;
             float jumpTotalDist = 0f;
             float totalFuel = 0f;
+            Dictionary<string, long> BodyTypes = new Dictionary<string, long>();
+            long bodiesFound = 0;
 
 
             // Get all the files we want to parse
@@ -50,22 +52,40 @@ namespace EliteRouteStats
                             if (string.IsNullOrEmpty(line) || string.IsNullOrWhiteSpace(line)) continue;
                             JObject json = JObject.Parse(line);
                             string e = json.GetValue("event").ToString();
-                            if (!e.Equals("FSDJump")) continue;
+                            if (!e.Equals("FSDJump") && !e.Equals("Scan")) continue;
                             // { "timestamp":"2017-07-18T16:16:58Z", "event":"FSDJump", "StarSystem":"Byua Euq EG-A b28-7", "StarPos":[-1343.500,110.938,5944.938], "SystemAllegiance":"", "SystemEconomy":"$economy_None;", "SystemEconomy_Localised":"None", "SystemGovernment":"$government_None;", "SystemGovernment_Localised":"None", "SystemSecurity":"$SYSTEM_SECURITY_low;", "SystemSecurity_Localised":"Low Security", "JumpDist":59.706, "FuelUsed":7.495902, "FuelLevel":24.504097 }
-                            string timestamp = json.GetValue("timestamp").ToString();
-                            float jumpDist = json.GetValue("JumpDist").ToObject<float>();
-                            float fuel = json.GetValue("FuelUsed").ToObject<float>();
-
-                            totalFuel += fuel;
-                            jumpTotalDist += jumpDist;
-                            jumpCount++;
-
-                            if (first)
+                            if (e.Equals("FSDJump"))
                             {
-                                first = false;
-                                timestampFirst = timestamp;
+                                string timestamp = json.GetValue("timestamp").ToString();
+                                float jumpDist = json.GetValue("JumpDist").ToObject<float>();
+                                float fuel = json.GetValue("FuelUsed").ToObject<float>();
+
+                                totalFuel += fuel;
+                                jumpTotalDist += jumpDist;
+                                jumpCount++;
+
+                                if (first)
+                                {
+                                    first = false;
+                                    timestampFirst = timestamp;
+                                }
+                                timestampLast = timestamp;
                             }
-                            timestampLast = timestamp;
+                            else if (e.Equals("Scan")) {
+                                string bodyType = string.Empty;
+                                try
+                                {
+                                    bool terraformable = json.GetValue("TerraformState").ToString().Equals("Terraformable");
+                                    bodyType = (terraformable ? "Terraformable " : "") + json.GetValue("PlanetClass").ToString().Replace("Sudarsky class", "Class");
+
+                                }
+                                catch { bodyType = string.Format("{0}-class star", json.GetValue("StarType").ToString()); }
+                                bodiesFound++;
+                                if (BodyTypes.ContainsKey(bodyType))
+                                    BodyTypes[bodyType]++;
+                                else
+                                    BodyTypes.Add(bodyType, 1);
+                            }
                         }
                     }
                 }
@@ -76,6 +96,10 @@ namespace EliteRouteStats
                 Console.WriteLine(string.Format("Total jump count: {0}", jumpCount.ToString("0,0")));
                 Console.WriteLine(string.Format("Total jump distance (ly): {0}", jumpTotalDist.ToString("0,0.00")));
                 Console.WriteLine(string.Format("Average jump distance (ly): {0}", (jumpTotalDist / (float)jumpCount).ToString("0,0.00")));
+                Console.WriteLine(string.Format("Number of bodies scanned: {0}", bodiesFound));
+                var ordered = BodyTypes.OrderByDescending(a => a.Value);
+                foreach (KeyValuePair<string, long> kvp in ordered)
+                    Console.WriteLine(string.Format("\t{0}: {1:n0}", kvp.Key, kvp.Value));
                 Console.WriteLine();
                 Console.WriteLine(string.Format("Total fuel usage (t): {0}", totalFuel.ToString("0,0.00")));
                 Console.WriteLine(string.Format("Start time (UTC): {0}", timestampFirst));
